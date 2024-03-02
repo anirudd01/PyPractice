@@ -1,3 +1,2 @@
-# Install
-
-python-memcached==1.62
+# PyMemcached
+has a docker compose to deploy memcached & a monitoring tool

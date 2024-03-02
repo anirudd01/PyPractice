@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package inventory;
+
+//product msg type
+message Product {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  int32 quantity = 4;
+}
+//req type msg type
+message InventoryReq {
+  string productId = 1;
+  int32 quantity = 2;
+}
+//service def
+service InventoryService {
+  rpc AddProduct(Product) returns (InventoryResponse) {}
+  rpc RemoveProduct(InventoryReq) returns (InventoryResponse) {}
+  rpc UpdateProduct(Product) returns (InventoryResponse) {}
+  rpc CheckInventory(InventoryReq) returns (InventoryResponse) {}
+  rpc ReserveProduct(InventoryReq) returns (InventoryResponse) {}
+}
+
+message InventoryResponse {
+  bool success = 1;
+  string message = 2;
+}
