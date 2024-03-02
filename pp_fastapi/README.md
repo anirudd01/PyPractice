@@ -1,1 +1,3 @@
-# PyPractice
+#install
+
+fastapi[all]==0.109.2

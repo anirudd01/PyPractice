@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+
+  memcached:
+    image: memcached:latest
+    container_name: memcached
+    ports:
+      - "11211:11211"
+    networks:
+      - pp_memcache_net
+
+  memcachedadmin:
+    image: hatamiarash7/memcached-admin:latest
+    container_name: memcachedadmin
+    platform: linux/amd64
+    environment:
+      - MEMCACHED_HOST=memcached
+      - MEMCACHED_PORT=11211
+    ports:
+      - "80:80"
+    depends_on:
+      - memcached
+    networks:
+      - pp_memcache_net
+
+networks:
+  pp_memcache_net:
