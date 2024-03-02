@@ -1,0 +1,4 @@
+fastapi[all]==0.109.2
+grpcio==1.60.1
+grpcio-tools==1.60.1
+python-memcached==1.62
