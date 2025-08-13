@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SSE Text Streaming Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #output { 
+            border: 1px solid #ccc; 
+            padding: 10px; 
+            height: 400px; 
+            overflow-y: auto; 
+            background: #f9f9f9;
+        }
+        .controls { margin: 20px 0; }
+        button { padding: 10px 20px; margin: 5px; }
+        .status { color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>SSE Text Streaming Test</h1>
+    
+    <div class="controls">
+        <button onclick="startStream()">Start Streaming</button>
+        <button onclick="stopStream()">Stop Streaming</button>
+        <button onclick="clearOutput()">Clear Output</button>
+    </div>
+    
+    <div class="status" id="status">Ready to start streaming...</div>
+    <div id="output"></div>
+
+    <script>
+        let eventSource = null;
+        let connectionId = null;
+
+        function startStream() {
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            document.getElementById('status').textContent = 'Connecting...';
+            document.getElementById('output').innerHTML = '';
+            
+            eventSource = new EventSource('http://localhost:8000/stream');
+            
+            eventSource.onopen = function(event) {
+                document.getElementById('status').textContent = 'Connected - Streaming started...';
+                // Extract connection ID from response headers or generate one
+                connectionId = Date.now().toString(); // Simple fallback
+            };
+            
+            eventSource.onmessage = function(event) {
+                const output = document.getElementById('output');
+                const div = document.createElement('div');
+                div.textContent = event.data;
+                output.appendChild(div);
+                output.scrollTop = output.scrollHeight;
+            };
+            
+            eventSource.onerror = function(event) {
+                document.getElementById('status').textContent = 'Error or connection closed';
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+            };
+        }
+        
+        function stopStream() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                document.getElementById('status').textContent = 'Streaming stopped';
+                
+                // Call server endpoint to stop streaming
+                if (connectionId) {
+                    fetch(`http://localhost:8000/stop-stream/${connectionId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    }).then(response => response.json())
+                      .then(data => console.log('Server response:', data))
+                      .catch(error => console.error('Error stopping stream:', error));
+                }
+                connectionId = null;
+            }
+        }
+        
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+        }
+    </script>
+</body>
+</html>
