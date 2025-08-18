@@ -1,8 +1,11 @@
+import asyncio
+import os
+import time
+import uuid
+from collections import defaultdict
+
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
-import asyncio
-import time
-import os
 
 app = FastAPI(title="SSE Text Streaming Server", debug=True)
 
@@ -12,8 +15,7 @@ DATA_FOLDER = "pp_sse/data/"
 MAX_LINES = 1000
 
 # Connection state management
-from collections import defaultdict
-import uuid
+
 
 # Store active connections
 active_connections = defaultdict(bool)

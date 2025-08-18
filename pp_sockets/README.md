@@ -17,22 +17,21 @@ WebSockets provide a persistent connection between a client and server, allowing
 ## Implementation Roadmap
 
 ### v1: Pure WebSocket (No FastAPI)
-- Simple chat room with broadcast messaging
 - 2-person private chat
-- Group chat functionality
 - Basic connection handling
+- Group chat functionality
+- Simple chat room with broadcast messaging
 - Message broadcasting to all clients
 
 ### v2: FastAPI WebSocket Integration
-- Enhanced chat room with FastAPI
-- User authentication and sessions
-- Room-based chat groups
 - Private messaging between users
-- Connection scaling and load handling
+- Enhanced chat room with FastAPI
+- Room-based chat groups
 
 ### Socket Handling & Scaling
 - Multiple client connections
 - Connection pooling
+- Connection scaling and load handling
 - Error handling and recovery
 - Performance optimization
 - Load balancing strategies
