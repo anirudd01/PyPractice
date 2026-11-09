@@ -42,27 +42,47 @@
             
             eventSource = new EventSource('http://localhost:8000/stream');
             
-            eventSource.onopen = function(event) {
-                document.getElementById('status').textContent = 'Connected - Streaming started...';
-                // Extract connection ID from response headers or generate one
-                connectionId = Date.now().toString(); // Simple fallback
-            };
-            
+            // Named event "connected": the server sends our real connection ID first.
+            eventSource.addEventListener('connected', function(event) {
+                const info = JSON.parse(event.data);
+                connectionId = info.connection_id;
+                const resumed = info.resumed_after ? ` (resumed after #${info.resumed_after})` : '';
+                document.getElementById('status').textContent = `Connected - streaming${resumed}...`;
+            });
+
+            // Unnamed events (no "event:" line) arrive here. event.lastEventId holds the "id:".
             eventSource.onmessage = function(event) {
-                const output = document.getElementById('output');
-                const div = document.createElement('div');
-                div.textContent = event.data;
-                output.appendChild(div);
-                output.scrollTop = output.scrollHeight;
+                appendLine(`#${event.lastEventId} ${event.data}`);
             };
-            
-            eventSource.onerror = function(event) {
-                document.getElementById('status').textContent = 'Error or connection closed';
-                if (eventSource) {
-                    eventSource.close();
-                    eventSource = null;
+
+            eventSource.addEventListener('progress', function(event) {
+                document.getElementById('status').textContent = `Streaming... ${JSON.parse(event.data).sent} sentences`;
+            });
+
+            // Named event "end": close ourselves, otherwise EventSource would auto-reconnect.
+            eventSource.addEventListener('end', function(event) {
+                const info = JSON.parse(event.data);
+                document.getElementById('status').textContent = `Finished (${info.reason}, ${info.sent} sentences)`;
+                eventSource.close();
+                eventSource = null;
+                connectionId = null;
+            });
+
+            // On a dropped connection the browser retries by itself (after "retry:" ms)
+            // and sends Last-Event-ID, so the server resumes where we left off.
+            eventSource.onerror = function() {
+                if (eventSource && eventSource.readyState === EventSource.CONNECTING) {
+                    document.getElementById('status').textContent = 'Connection lost - reconnecting...';
                 }
             };
+        }
+
+        function appendLine(text) {
+            const output = document.getElementById('output');
+            const div = document.createElement('div');
+            div.textContent = text;
+            output.appendChild(div);
+            output.scrollTop = output.scrollHeight;
         }
         
         function stopStream() {
@@ -73,12 +93,8 @@
                 
                 // Call server endpoint to stop streaming
                 if (connectionId) {
-                    fetch(`http://localhost:8000/stop-stream/${connectionId}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        }
-                    }).then(response => response.json())
+                    fetch(`http://localhost:8000/stop-stream/${connectionId}`, { method: 'POST' })
+                      .then(response => response.json())
                       .then(data => console.log('Server response:', data))
                       .catch(error => console.error('Error stopping stream:', error));
                 }

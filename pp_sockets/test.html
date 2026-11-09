@@ -456,13 +456,16 @@
                 userItem.className = 'user-item';
                 userItem.onclick = () => selectUser(client);
                 
-                userItem.innerHTML = `
-                    <div class="user-name">
-                        <span class="online-indicator"></span>
-                        ${client.name}
-                    </div>
-                    <div class="user-id">${client.id}</div>
-                `;
+                // Build with textContent, never innerHTML, for user-supplied text (prevents XSS).
+                const nameEl = document.createElement('div');
+                nameEl.className = 'user-name';
+                const dot = document.createElement('span');
+                dot.className = 'online-indicator';
+                nameEl.append(dot, ' ' + client.name);
+                const idEl = document.createElement('div');
+                idEl.className = 'user-id';
+                idEl.textContent = client.id;
+                userItem.append(nameEl, idEl);
                 
                 usersListEl.appendChild(userItem);
             });
@@ -534,12 +537,17 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
             
-            messageDiv.innerHTML = `
-                <div class="message-sender">${senderName}</div>
-                <div class="message-bubble">
-                    <div class="message-text">${message}</div>
-                </div>
-            `;
+            // textContent, not innerHTML: a message like "<img onerror=...>" must stay text.
+            const senderEl = document.createElement('div');
+            senderEl.className = 'message-sender';
+            senderEl.textContent = senderName;
+            const bubbleEl = document.createElement('div');
+            bubbleEl.className = 'message-bubble';
+            const textEl = document.createElement('div');
+            textEl.className = 'message-text';
+            textEl.textContent = message;
+            bubbleEl.appendChild(textEl);
+            messageDiv.append(senderEl, bubbleEl);
             
             chatMessagesEl.appendChild(messageDiv);
             chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;

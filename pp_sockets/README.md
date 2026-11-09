@@ -16,19 +16,19 @@ WebSockets provide a persistent connection between a client and server, allowing
 
 ## Implementation Roadmap
 
-### v1: Pure WebSocket (No FastAPI)
-- 2-person private chat
-- Basic connection handling
-- Group chat functionality
-- Simple chat room with broadcast messaging
-- Message broadcasting to all clients
+### v1: Pure WebSocket (No FastAPI) — `main.py` + `test.html` ✅
+- ✅ 2-person private chat
+- ✅ Registration handshake, join/leave notifications
+- ✅ Broadcast message type (`{"type": "broadcast", ...}`, not yet in `test.html`)
+- ✅ Graceful shutdown (SIGTERM on Linux, Ctrl+C on Windows)
 
-### v2: FastAPI WebSocket Integration
-- Private messaging between users
-- Enhanced chat room with FastAPI
-- Room-based chat groups
+### v2: FastAPI WebSocket Integration — `fastapi_ws.py` ✅
+- ✅ Room-based chat groups with a `ConnectionManager`
+- ✅ Token check before accepting (real clients see the handshake fail with HTTP 403)
+- ✅ Built-in test page at `/`
+- 🔄 Private messaging between users
 
-### Socket Handling & Scaling
+### Socket Handling & Scaling (to do)
 - Multiple client connections
 - Connection pooling
 - Connection scaling and load handling
@@ -39,7 +39,7 @@ WebSockets provide a persistent connection between a client and server, allowing
 ## Technology Stack
 
 - **Python**: Core implementation language
-- **FastAPI/Flask-SocketIO**: Web framework with WebSocket support
+- **FastAPI**: Web framework with WebSocket support
 - **websockets**: Python WebSocket library
 - **JavaScript**: Client-side WebSocket API
 - **HTML5**: WebSocket browser API
@@ -47,22 +47,28 @@ WebSockets provide a persistent connection between a client and server, allowing
 ## Getting Started
 
 ```bash
-# Install dependencies
+# from pp_sockets/
 pip install -r req.txt
 
-# Run the WebSocket server
+# v1: pure websockets server on ws://localhost:8765, then open test.html in two tabs
 python main.py
+
+# v2: FastAPI rooms, then open http://127.0.0.1:8002 in two tabs
+uvicorn fastapi_ws:app --port 8002 --reload
+
+# tests for both
+pytest -v
 ```
 
 ## Example Usage
 
 ```javascript
-// Client-side JavaScript
-const socket = new WebSocket('ws://localhost:8000/ws');
+// Client-side JavaScript (v1 server)
+const socket = new WebSocket('ws://localhost:8765');
 
 socket.onopen = function(event) {
     console.log('Connected to WebSocket server');
-    socket.send('Hello Server!');
+    socket.send(JSON.stringify({ type: 'register', name: 'Ani' }));
 };
 
 socket.onmessage = function(event) {

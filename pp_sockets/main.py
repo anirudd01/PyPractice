@@ -1,261 +1,172 @@
+"""Pure WebSocket chat server using the `websockets` library (no web framework).
+
+Run (from pp_sockets/):  python main.py   then open test.html in two browser tabs.
+
+Protocol (JSON messages):
+    client -> server  {"type": "register", "name": "Ani"}              (must be first)
+                      {"type": "private_message", "recipient_id": "...", "message": "hi"}
+                      {"type": "broadcast", "message": "hello all"}
+                      {"type": "list_clients"}
+    server -> client  {"type": "system" | "clients_list" | "private_message" |
+                       "private_sent" | "broadcast" | "error", ...}
+
+Cheat sheet:
+- `serve(handler, host, port)` calls `handler(websocket)` once per connection.
+- `async for message in websocket:` reads until the client disconnects.
+- `await websocket.send(text)` sends; `websockets.broadcast(conns, text)` fans out
+  without awaiting each client (a slow client can't block the others).
+- The handler returning closes the connection, so cleanup goes in `finally`.
+"""
+
 import asyncio
 import json
 import signal
 import uuid
-from typing import Dict, Set
 
-from websockets import ServerProtocol, serve
+from websockets import ConnectionClosed, broadcast
+from websockets.asyncio.server import ServerConnection, serve
+
+HOST, PORT = "localhost", 8765
 
 
 class ChatServer:
-    def __init__(self):
-        self.clients: Dict[str, ServerProtocol] = {}
-        self.client_names: Dict[str, str] = {}
-        self.private_chats: Dict[str, Set[str]] = {}
+    def __init__(self) -> None:
+        self.clients: dict[str, ServerConnection] = {}
+        self.client_names: dict[str, str] = {}
 
-    async def register_client(self, websocket: ServerProtocol, name: str):
-        """Register a new client with a unique ID"""
+    # ---------- connection lifecycle ----------
+    async def register_client(self, websocket: ServerConnection, name: str) -> str:
         client_id = str(uuid.uuid4())
         self.clients[client_id] = websocket
         self.client_names[client_id] = name
         print(f"Client {name} ({client_id}) connected")
 
-        # Send welcome message
-        await websocket.send(
-            json.dumps(
-                {
-                    "type": "system",
-                    "message": f"Welcome {name}! Your ID: {client_id}",
-                    "client_id": client_id,
-                }
-            )
+        await self.send_to_client(
+            client_id, {"type": "system", "message": f"Welcome {name}! Your ID: {client_id}", "client_id": client_id}
         )
-
-        # Send list of available clients
-        available_clients = [
-            {"id": cid, "name": cname}
-            for cid, cname in self.client_names.items()
-            if cid != client_id
-        ]
-        await websocket.send(
-            json.dumps({"type": "clients_list", "clients": available_clients})
-        )
-
+        await self.send_clients_list(client_id)
+        self.broadcast_json({"type": "system", "message": f"{name} has joined the chat"}, exclude=client_id)
         return client_id
 
-    async def unregister_client(self, client_id: str):
-        """Unregister a client when they disconnect"""
-        if client_id in self.clients:
-            name = self.client_names.get(client_id, "Unknown")
-            del self.clients[client_id]
-            del self.client_names[client_id]
-            print(f"Client {name} ({client_id}) disconnected")
+    def unregister_client(self, client_id: str) -> None:
+        name = self.client_names.pop(client_id, "Unknown")
+        self.clients.pop(client_id, None)
+        print(f"Client {name} ({client_id}) disconnected")
+        self.broadcast_json({"type": "system", "message": f"{name} has left the chat"})
 
-            # Notify other clients
-            await self.broadcast_system_message(f"{name} has left the chat")
+    # ---------- sending ----------
+    async def send_to_client(self, client_id: str, data: dict) -> None:
+        websocket = self.clients.get(client_id)
+        if websocket is None:
+            return
+        try:
+            await websocket.send(json.dumps(data))
+        except ConnectionClosed:
+            pass  # the handler's `finally` will unregister this client
 
-    async def handle_private_message(
-        self, sender_id: str, recipient_id: str, message: str
-    ):
-        """Handle private message between two clients"""
-        if recipient_id not in self.clients:
-            await self.send_to_client(
-                sender_id, {"type": "error", "message": "Recipient not found"}
-            )
+    def broadcast_json(self, data: dict, exclude: str | None = None) -> None:
+        targets = [ws for cid, ws in self.clients.items() if cid != exclude]
+        broadcast(targets, json.dumps(data))
+
+    async def send_clients_list(self, client_id: str) -> None:
+        others = [{"id": cid, "name": name} for cid, name in self.client_names.items() if cid != client_id]
+        await self.send_to_client(client_id, {"type": "clients_list", "clients": others})
+
+    # ---------- message routing ----------
+    async def handle_message(self, client_id: str, raw: str) -> None:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            await self.send_to_client(client_id, {"type": "error", "message": "Invalid JSON format"})
             return
 
-        sender_name = self.client_names.get(sender_id, "Unknown")
-        recipient_name = self.client_names.get(recipient_id, "Unknown")
+        match data.get("type"):  # structural pattern matching (Python 3.10+)
+            case "private_message":
+                await self.handle_private_message(client_id, data.get("recipient_id"), data.get("message", ""))
+            case "broadcast":
+                sender = self.client_names[client_id]
+                self.broadcast_json(
+                    {"type": "broadcast", "sender_id": client_id, "sender_name": sender, "message": data.get("message", "")},
+                    exclude=client_id,
+                )
+            case "list_clients":
+                await self.send_clients_list(client_id)
+            case "register":
+                await self.send_to_client(client_id, {"type": "error", "message": "Already registered"})
+            case other:
+                await self.send_to_client(client_id, {"type": "error", "message": f"Unknown message type: {other}"})
 
-        # Send to recipient
+    async def handle_private_message(self, sender_id: str, recipient_id: str | None, message: str) -> None:
+        if recipient_id not in self.clients:
+            await self.send_to_client(sender_id, {"type": "error", "message": "Recipient not found"})
+            return
         await self.send_to_client(
             recipient_id,
             {
                 "type": "private_message",
                 "message": message,
                 "sender_id": sender_id,
-                "sender_name": sender_name,
+                "sender_name": self.client_names[sender_id],
             },
         )
-
-        # Send confirmation to sender
         await self.send_to_client(
             sender_id,
             {
                 "type": "private_sent",
-                "message": f"Message sent to {recipient_name}",
+                "message": f"Message sent to {self.client_names[recipient_id]}",
                 "recipient_id": recipient_id,
             },
         )
 
-    async def send_to_client(self, client_id: str, data: dict):
-        """Send data to a specific client"""
-        if client_id in self.clients:
-            try:
-                await self.clients[client_id].send(json.dumps(data))
-            except Exception as e:
-                print(f"Error sending to client {client_id}: {e}")
 
-    async def broadcast_system_message(self, message: str):
-        """Broadcast system message to all clients"""
-        data = {"type": "system", "message": message}
-        for client_id in list(self.clients.keys()):
-            await self.send_to_client(client_id, data)
-
-    async def handle_message(self, websocket: ServerProtocol, message: str):
-        """Handle incoming message from client"""
-        try:
-            data = json.loads(message)
-            client_id = None
-
-            # Find client ID for this websocket
-            for cid, ws in self.clients.items():
-                if ws == websocket:
-                    client_id = cid
-                    break
-
-            if not client_id:
-                return
-
-            msg_type = data.get("type", "message")
-
-            if msg_type == "register":
-                # Client registration
-                name = data.get("name", f"User_{client_id[:8]}")
-                await self.register_client(websocket, name)
-
-            elif msg_type == "private_message":
-                # Private message
-                recipient_id = data.get("recipient_id")
-                message_text = data.get("message", "")
-                if recipient_id:
-                    await self.handle_private_message(
-                        client_id, recipient_id, message_text
-                    )
-
-            elif msg_type == "list_clients":
-                # Send list of available clients
-                available_clients = [
-                    {"id": cid, "name": cname}
-                    for cid, cname in self.client_names.items()
-                    if cid != client_id
-                ]
-                await self.send_to_client(
-                    client_id, {"type": "clients_list", "clients": available_clients}
-                )
-
-        except json.JSONDecodeError:
-            await websocket.send(
-                json.dumps({"type": "error", "message": "Invalid JSON format"})
-            )
-        except Exception as e:
-            print(f"Error handling message: {e}")
-            await websocket.send(
-                json.dumps({"type": "error", "message": "Internal server error"})
-            )
-
-    async def cleanup(self):
-        """Clean up all connections gracefully"""
-        print("\nShutting down server...")
-        if self.clients:
-            print(f"Disconnecting {len(self.clients)} clients...")
-            # Send shutdown message to all clients
-            for client_id in list(self.clients.keys()):
-                try:
-                    await self.send_to_client(
-                        client_id,
-                        {"type": "system", "message": "Server is shutting down"},
-                    )
-                except Exception as e:
-                    print(f"Error sending shutdown message to client {client_id}: {e}")
-            # Clear all clients
-            self.clients.clear()
-            self.client_names.clear()
-        print("Server shutdown complete.")
-
-
-# Global chat server instance
 chat_server = ChatServer()
 
 
-async def websocket_handler(websocket: ServerProtocol):
-    """Main WebSocket connection handler"""
+async def websocket_handler(websocket: ServerConnection) -> None:
+    """Called once per connection. Step 1: wait for registration. Step 2: route messages."""
     client_id = None
-
     try:
-        # Wait for client registration
-        async for message in websocket:
+        async for raw in websocket:
             try:
-                data = json.loads(message)
-                if data.get("type") == "register":
-                    name = data.get("name", "Anonymous")
-                    client_id = await chat_server.register_client(websocket, name)
-                    break
+                data = json.loads(raw)
             except json.JSONDecodeError:
-                await websocket.send(
-                    json.dumps(
-                        {
-                            "type": "error",
-                            "message": 'Please register first with: {"type": "register", "name": "YourName"}',
-                        }
-                    )
-                )
+                data = {}
+            if data.get("type") == "register":
+                client_id = await chat_server.register_client(websocket, data.get("name") or "Anonymous")
+                break
+            await websocket.send(
+                json.dumps({"type": "error", "message": 'Register first: {"type": "register", "name": "YourName"}'})
+            )
 
-        # Handle messages after registration
         if client_id:
-            async for message in websocket:
-                await chat_server.handle_message(websocket, message)
-
-    except Exception as e:
-        print(f"WebSocket error: {e}")
+            async for raw in websocket:  # continues on the same connection
+                await chat_server.handle_message(client_id, raw)
+    except ConnectionClosed:
+        pass  # normal for clients that drop without a close frame
     finally:
         if client_id:
-            await chat_server.unregister_client(client_id)
+            chat_server.unregister_client(client_id)
 
 
-async def shutdown(signal, loop):
-    """Handle shutdown gracefully"""
-    print(f"\nReceived exit signal {signal.name}...")
-    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+async def main() -> None:
+    stop = asyncio.get_running_loop().create_future()
 
-    # Cancel all tasks
-    for task in tasks:
-        task.cancel()
-
-    # Wait for all tasks to be cancelled
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Cleanup chat server
-    await chat_server.cleanup()
-
-    # Stop the loop
-    loop.stop()
-
-
-async def main():
-    """Start the WebSocket server"""
-    print("Starting WebSocket Chat Server on ws://localhost:8765")
-    print("Waiting for connections... (Press Ctrl+C to stop)")
-
-    # Get the event loop
-    loop = asyncio.get_running_loop()
-
-    # Set up signal handlers for graceful shutdown
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(
-            sig, lambda s=sig: asyncio.create_task(shutdown(s, loop))
-        )
-
+    # Graceful shutdown on SIGTERM (Docker/Kubernetes). add_signal_handler is
+    # Unix-only; on Windows Ctrl+C raises KeyboardInterrupt instead (handled below).
     try:
-        async with serve(websocket_handler, "localhost", 8765):
-            # Keep the server running
-            await asyncio.Future()  # run forever
-    except asyncio.CancelledError:
-        print("Server cancelled")
-    except Exception as e:
-        print(f"Server error: {e}")
-    finally:
-        await chat_server.cleanup()
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
+        loop.add_signal_handler(signal.SIGINT, stop.set_result, None)
+    except NotImplementedError:
+        pass
+
+    # Leaving the `async with` block closes all connections (close code 1001 "going away").
+    async with serve(websocket_handler, HOST, PORT) as server:
+        print(f"WebSocket chat server on ws://{HOST}:{PORT}  (Ctrl+C to stop)")
+        await stop
+        chat_server.broadcast_json({"type": "system", "message": "Server is shutting down"})
+        server.close()
+    print("Server shutdown complete.")
 
 
 if __name__ == "__main__":
@@ -263,5 +174,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\nServer stopped by user")
-    except Exception as e:
-        print(f"Server error: {e}")

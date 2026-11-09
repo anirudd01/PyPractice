@@ -1,20 +1,71 @@
+// Regenerate the Python code after changing this file (run inside pp_grpc/):
+//   python -m grpc_tools.protoc -I . --python_out=. --pyi_out=. --grpc_python_out=. customer.proto
 syntax = "proto3";
 
+package customer;
+
+import "google/protobuf/empty.proto";      // well-known type: "no payload"
+import "google/protobuf/timestamp.proto";  // well-known type: date-time
+
+// The four RPC styles gRPC supports, all in one service.
 service CustomerService {
-    rpc CreateCustomer (CustomerRequest) returns (CustomerResponse) {}
-    rpc GetCustomer (CustomerRequest) returns (CustomerResponse) {}
-    rpc UpdateCustomer (CustomerRequest) returns (CustomerResponse) {}
-    rpc DeleteCustomer (CustomerRequest) returns (CustomerResponse) {}
+  // 1) Unary: one request -> one response
+  rpc CreateCustomer (CreateCustomerRequest) returns (Customer);
+  rpc GetCustomer (GetCustomerRequest) returns (Customer);
+  rpc UpdateCustomer (UpdateCustomerRequest) returns (Customer);
+  rpc DeleteCustomer (GetCustomerRequest) returns (google.protobuf.Empty);
+
+  // 2) Server streaming: one request -> stream of responses
+  rpc ListCustomers (ListCustomersRequest) returns (stream Customer);
+
+  // 3) Client streaming: stream of requests -> one response
+  rpc BulkCreateCustomers (stream CreateCustomerRequest) returns (BulkCreateResponse);
+
+  // 4) Bidirectional streaming: both sides stream independently
+  rpc LookupCustomers (stream GetCustomerRequest) returns (stream Customer);
 }
 
-message CustomerRequest {
-    string id = 1;
-    string name = 2;
-    string email = 3;
+enum Tier {
+  TIER_UNSPECIFIED = 0;  // proto3 enums must start at 0 (the default value)
+  TIER_FREE = 1;
+  TIER_PREMIUM = 2;
 }
 
-message CustomerResponse {
-    string id = 1;
-    string name = 2;
-    string email = 3;
+message Customer {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  Tier tier = 4;
+  repeated string tags = 5;                   // list
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message CreateCustomerRequest {
+  string name = 1;
+  string email = 2;
+  Tier tier = 3;
+  repeated string tags = 4;
+}
+
+message GetCustomerRequest {
+  string id = 1;
+}
+
+// `optional` gives presence tracking (HasField), so a PATCH-style update can
+// tell "not sent" apart from "set to empty string".
+message UpdateCustomerRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string email = 3;
+  optional Tier tier = 4;
+}
+
+message ListCustomersRequest {
+  int32 page_size = 1;  // 0 = no limit
+  Tier tier = 2;        // TIER_UNSPECIFIED = all tiers
+}
+
+message BulkCreateResponse {
+  int32 created_count = 1;
+  repeated string ids = 2;
 }

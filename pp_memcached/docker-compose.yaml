@@ -1,12 +1,13 @@
-version: "3.9"
-
+# docker compose -f pp_memcached/docker-compose.yaml up -d            -> memcached on localhost:11211, admin UI on http://localhost:8080
+# docker compose -f pp_memcached/docker-compose.yaml run --rm tester  -> build the test image, run tests + demo against memcached
+# docker compose -f pp_memcached/docker-compose.yaml down             -> stop and remove everything
 services:
-
   memcached:
-    image: memcached:latest
+    image: memcached:1.6-alpine
     container_name: memcached
+    command: ["memcached", "-m", "64", "-I", "1m"]  # 64 MB memory, 1 MB max item size
     ports:
-      - "11211:11211"
+      - "127.0.0.1:11211:11211"   # this machine only: memcached has no auth
     networks:
       - pp_memcache_net
 
@@ -18,7 +19,18 @@ services:
       - MEMCACHED_HOST=memcached
       - MEMCACHED_PORT=11211
     ports:
-      - "80:80"
+      - "127.0.0.1:8080:80"
+    depends_on:
+      - memcached
+    networks:
+      - pp_memcache_net
+
+  tester:
+    build: .                       # pp_memcached/Dockerfile
+    profiles: ["test"]             # not started by `up`; `run tester` starts it (and memcached)
+    environment:
+      - MEMCACHED_HOST=memcached   # service name = hostname on the compose network
+      - MEMCACHED_PORT=11211
     depends_on:
       - memcached
     networks:

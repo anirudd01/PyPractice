@@ -28,7 +28,8 @@ Server-Sent Events (SSE) is a web standard that allows a web page to get updates
 - ✅ Connection state tracking using `active_connections`
 - ✅ Multiple client handling with connection isolation
 - ✅ Connection cleanup on completion/disconnect
-- ✅ Manual stream stopping endpoint (`/stop-stream/{connection_id}`)
+- ✅ Manual stream stopping endpoint (`/stop-stream/{connection_id}`); the ID arrives in the first `connected` event
+- ✅ Resume after reconnect: every sentence has an `id:`, the browser sends `Last-Event-ID`
 
 ### Client Interface ✅
 - ✅ HTML test interface with EventSource API
@@ -37,8 +38,13 @@ Server-Sent Events (SSE) is a web standard that allows a web page to get updates
 - ✅ Connection status indicators
 - ✅ Error handling for client disconnections
 
+### Event Types ✅
+- ✅ Named events: `connected`, `progress`, `end` (plus unnamed sentence events)
+- ✅ `retry:` field sets the browser's reconnect delay
+- ✅ Explicit `end` event so the browser does not auto-reconnect after completion
+
 ### Error Handling ✅
-- ✅ File not found error handling
+- ✅ Falls back to a built-in sample text when the data file is missing
 - ✅ Client disconnection detection
 - ✅ Exception handling during streaming
 - ✅ Graceful connection cleanup
@@ -47,9 +53,7 @@ Server-Sent Events (SSE) is a web standard that allows a web page to get updates
 
 ### Advanced Features
 - 🔄 **Connection Pooling**: Redis/Memcached for connection state management
-- 🔄 **Streaming Optimization**: Async generators for large file handling
 - 🔄 **Chunk Configuration**: Word/character-level streaming options
-- 🔄 **Event Types**: Custom event types (progress, error, status)
 - 🔄 **Rate Limiting**: Token bucket algorithm for request throttling
 
 ### Enhanced Client Features
@@ -77,12 +81,13 @@ Server-Sent Events (SSE) is a web standard that allows a web page to get updates
 ## Getting Started
 
 ```bash
-# Install dependencies
-pip install -r req.txt
-
-# Run the SSE server
-python main.py
+pip install -r pp_sse/req.txt
+python pp_sse/main.py        # works from any folder; then open pp_sse/test.html
+pytest pp_sse -v             # or: cd pp_sse && pytest -v
 ```
+
+Optional: put a text file at `pp_sse/data/the_intelligent_investor.txt` (git-ignored).
+Without it the server streams a short built-in sample.
 
 ## Example Usage
 
@@ -90,9 +95,13 @@ python main.py
 // Client-side JavaScript
 const eventSource = new EventSource('/stream');
 
-eventSource.onmessage = function(event) {
-    console.log('Received:', event.data);
+eventSource.onmessage = function(event) {      // unnamed events
+    console.log('Received:', event.lastEventId, event.data);
 };
+
+eventSource.addEventListener('end', function(event) {  // named event
+    eventSource.close();                       // otherwise the browser reconnects
+});
 
 eventSource.onerror = function(error) {
     console.error('SSE Error:', error);
@@ -102,9 +111,9 @@ eventSource.onerror = function(error) {
 ## Current Implementation Details
 
 - **Server**: FastAPI-based SSE server running on port 8000
-- **Text Source**: Streams from `data/the_intelligent_investor.txt`
+- **Text Source**: Streams from `data/the_intelligent_investor.txt` (path resolved relative to `main.py`)
 - **Streaming**: Sentence-by-sentence with 0.1s delays
-- **Max Lines**: 1000 lines per session
+- **Max Lines**: 1000 lines per session, capped with `itertools.islice` (the rest of the file is never read)
 - **Connection Management**: UUID-based connection tracking
 - **Test Interface**: HTML file with EventSource implementation
 

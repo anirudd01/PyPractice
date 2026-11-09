@@ -1,0 +1,6 @@
+streamlit>=1.57
+httpx>=0.27
+websockets>=14
+# for the tests (they start the real SSE and WebSocket servers)
+fastapi[standard]>=0.115
+pytest>=8

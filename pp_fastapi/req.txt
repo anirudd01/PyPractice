@@ -1,1 +1,2 @@
-fastapi[all]==0.109.2
+fastapi[standard]>=0.115
+pytest>=8

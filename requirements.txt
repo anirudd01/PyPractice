@@ -1,4 +1,10 @@
-fastapi[all]==0.109.2
-grpcio==1.60.1
-grpcio-tools==1.60.1
-python-memcached==1.62
+# Everything needed to run all the practice folders (Python 3.11+).
+# Each folder also has its own req.txt with just what it needs.
+fastapi[standard]>=0.115
+grpcio>=1.85.1
+grpcio-tools>=1.85.1
+protobuf>=7.35.1
+websockets>=14
+streamlit>=1.57
+pymemcache>=4.0
+pytest>=8
