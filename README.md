@@ -23,6 +23,9 @@ This repository serves as a sandbox for:
 - **`pp_grpc/`** - gRPC: all four RPC styles (unary, server/client/bidirectional streaming), interceptor, status codes, deadlines, REST gateway, tests
 - **`pp_memcached/`** - Memcached with pymemcache: core commands, counters, TTL, CAS, cache-aside pattern; Docker Compose with an admin UI and a Dockerised integration-test runner
 
+### AI Agents
+- **`pp_agents/`** - Agents from scratch with OpenAI: tools and the agent loop, an MCP server and MCP-client agent, and an orchestrator that spawns sub-agents (LLM-driven and parallel fan-out)
+
 ### Infrastructure
 - **`pp_k8s/graceful_shutdown/`** - FastAPI + preStop + request draining on kind, with and without preStop (Docker, kind, kubectl)
 
@@ -57,5 +60,6 @@ Each folder has its own `README.md` with run instructions and a short list of in
 - **Server-Sent Events** - Real-time unidirectional data streaming
 - **Streamlit** - Interactive web UI for testing and demonstration
 - **Kubernetes** - Graceful shutdown, probes, preStop hooks (kind)
+- **OpenAI / MCP** - Tool-calling agents, Model Context Protocol, multi-agent orchestration
 - **AsyncIO** - Asynchronous programming in Python
 - **Data Structures** - Core algorithms and data structure implementations
