@@ -9,5 +9,6 @@ streamlit>=1.57
 pymemcache>=4.0
 openai>=2.0
 mcp>=2.3
+openai-agents>=0.24
 python-dotenv>=1.0
 pytest>=8

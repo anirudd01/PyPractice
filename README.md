@@ -24,7 +24,7 @@ This repository serves as a sandbox for:
 - **`pp_memcached/`** - Memcached with pymemcache: core commands, counters, TTL, CAS, cache-aside pattern; Docker Compose with an admin UI and a Dockerised integration-test runner
 
 ### AI Agents
-- **`pp_agents/`** - Agents from scratch with OpenAI: tools and the agent loop, an MCP server and MCP-client agent, and an orchestrator that spawns sub-agents (LLM-driven and parallel fan-out)
+- **`pp_agents/`** - AI agents built twice, from scratch with the OpenAI SDK and with the OpenAI Agents SDK: tools, the agent loop, MCP server and client, sub-agent orchestration (agents as tools, parallel fan-out, handoffs), real offline and live-model tests
 
 ### Infrastructure
 - **`pp_k8s/graceful_shutdown/`** - FastAPI + preStop + request draining on kind, with and without preStop (Docker, kind, kubectl)
@@ -43,6 +43,7 @@ python -m venv .venv
 pip install -r requirements.txt  # everything; or a folder's own req.txt
 
 pytest pp_fastapi                # FastAPI tests run from the repo root
+cd pp_agents && pytest -m "not llm"  # agents: offline tests (plain pytest also hits the real model)
 cd pp_grpc && pytest             # the other folders run their tests from inside the folder
 docker compose -f pp_memcached/docker-compose.yaml run --rm tester   # memcached tests in Docker
 ```
